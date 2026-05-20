@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>점심 메뉴 룰렛</title>
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4e8fda34697484282f0c0deaf8e10ee8&libraries=services&autoload=false"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #f5f5f5; color: #222; }
+
+  .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+
+  .section { background: #fff; border-radius: 14px; border: 1px solid #e8e8e8; padding: 20px; margin-bottom: 16px; }
+  .section-label { font-size: 11px; font-weight: 600; color: #aaa; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+
+  #map { width: 100%; height: 260px; border-radius: 10px; border: 1px solid #e0e0e0; }
+  #location-text { font-size: 13px; color: #888; margin-top: 8px; }
+
+  .cat-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .cat-row input { flex: 1; padding: 9px 13px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+  .cat-row input:focus { border-color: #FEE500; box-shadow: 0 0 0 2px rgba(254,229,0,.3); }
+  .cat-row button { padding: 9px 16px; background: #FEE500; color: #3c1e1e; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .cat-row button:hover { background: #f5dc00; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 7px; }
+  .tag { display: flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: default; }
+  .tag .x { cursor: pointer; font-size: 15px; line-height: 1; opacity: .7; }
+  .tag .x:hover { opacity: 1; }
+
+  .roulette-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  canvas { border-radius: 50%; border: 3px solid #e0e0e0; display: block; }
+  #result-text { font-size: 20px; font-weight: 700; min-height: 28px; text-align: center; color: #222; }
+  #spin-btn { padding: 11px 40px; font-size: 15px; font-weight: 600; border-radius: 24px; background: #FEE500; color: #3c1e1e; border: none; cursor: pointer; transition: background .15s, transform .1s; }
+  #spin-btn:hover { background: #f5dc00; }
+  #spin-btn:active { transform: scale(.97); }
+  #spin-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  .rest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .rest-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 13px 15px; cursor: pointer; transition: border-color .15s; }
+  .rest-card:hover { border-color: #FEE500; }
+  .rest-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; color: #222; }
+  .rest-cat { font-size: 12px; color: #888; margin-bottom: 2px; }
+  .rest-addr { font-size: 12px; color: #aaa; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rest-link { font-size: 12px; color: #3B8BD4; text-decoration: none; }
+  .rest-link:hover { text-decoration: underline; }
+
+  .empty { font-size: 13px; color: #aaa; }
+  .loading { font-size: 13px; color: #888; text-align: center; padding: 20px; }
+  #rest-section { display: none; }
+  #myloc-btn { margin-top: 10px; padding: 8px 16px; background: #fff; color: #3B8BD4; border: 1px solid #3B8BD4; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  #myloc-btn:hover { background: #f0f7ff; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🍽️ 점심 메뉴 룰렛</h1>
+  <p class="subtitle">지도 핀 찍기 → 카테고리 설정 → 룰렛 돌리기 → 근처 식당 추천</p>
+
+  <!-- STEP 1: 지도 -->
+  <div class="section">
+    <div class="section-label">1. 위치 선택 — 지도를 클릭하거나 핀을 드래그해요</div>
+    <div id="map"></div>
+    <p id="location-text">📍 지도를 클릭해서 위치를 선택해주세요</p>
+    <button id="myloc-btn" onclick="goMyLocation()">📡 현재 내 위치로 이동</button>
+  </div>
+
+  <!-- STEP 2: 카테고리 -->
+  <div class="section">
+    <div class="section-label">2. 음식 카테고리 추가</div>
+    <div class="cat-row">
+      <input type="text" id="cat-input" placeholder="한식, 양식, 중식, 일식..." />
+      <button onclick="addCat()">+ 추가</button>
+    </div>
+    <div class="tag-list" id="tag-list"></div>
+    <p class="empty" id="cat-empty" style="display:none">카테고리를 추가해주세요!</p>
+  </div>
+
+  <!-- STEP 3: 룰렛 -->
+  <div class="section">
+    <div class="section-label">3. 룰렛</div>
+    <div class="roulette-wrap">
+      <canvas id="roulette" width="240" height="240"></canvas>
+      <div id="result-text"></div>
+      <button id="spin-btn" onclick="spin()">🎰 룰렛 돌리기</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: 결과 -->
+  <div class="section" id="rest-section">
+    <div class="section-label" id="rest-label">4. 근처 추천 식당</div>
+    <div id="rest-content"></div>
+  </div>
+</div>
+
+<script>
+const COLORS = ['#E24B4A','#185FA5','#1D9E75','#BA7517','#7F77DD','#D4537E','#639922','#D85A30'];
+let cats = ['한식','양식','중식','일식','분식'];
+let lat = 37.5665, lng = 126.9780;
+let spinning = false, angle = 0;
+let map, marker, ps;
+
+// 카카오 지도 초기화
+function initMap() {
+  const container = document.getElementById('map');
+  const opts = { center: new kakao.maps.LatLng(lat, lng), level: 4 };
+  map = new kakao.maps.Map(container, opts);
+  ps = new kakao.maps.services.Places();
+
+  marker = new kakao.maps.Marker({ position: new kakao.maps.LatLng(lat, lng), map });
+
+  kakao.maps.event.addListener(map, 'click', function(e) {
+    lat = e.latLng.getLat();
+    lng = e.latLng.getLng();
+    marker.setPosition(e.latLng);
+    document.getElementById('location-text').textContent =
+      `📍 선택된 위치: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  });
+  marker.setDraggable(true);
+  kakao.maps.event.addListener(marker, 'dragend', function() {
+    const pos = marker.getPosition();
+    lat = pos.getLat(); lng = pos.getLng();
+    document.getElementById('location-text').textContent =
+      `📍 선택된 위치: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  });
+}
+
+// 현재 위치로 이동
+function goMyLocation() {
+  const btn = document.getElementById('myloc-btn');
+  btn.textContent = '📡 위치 찾는 중...';
+  btn.disabled = true;
+  if (!navigator.geolocation) {
+    alert('이 브라우저는 위치 기능을 지원하지 않아요.');
+    btn.textContent = '📡 현재 내 위치로 이동';
+    btn.disabled = false;
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    lat = pos.coords.latitude;
+    lng = pos.coords.longitude;
+    const locObj = new kakao.maps.LatLng(lat, lng);
+    map.setCenter(locObj);
+    map.setLevel(3);
+    marker.setPosition(locObj);
+    document.getElementById('location-text').textContent =
+      `📍 현재 위치: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    btn.textContent = '📡 현재 내 위치로 이동';
+    btn.disabled = false;
+  }, function() {
+    alert('위치 권한을 허용해주세요! 브라우저 주소창 옆 자물쇠 아이콘을 클릭해서 위치 권한을 허용할 수 있어요.');
+    btn.textContent = '📡 현재 내 위치로 이동';
+    btn.disabled = false;
+  });
+}
+
+// 카테고리 태그
+function renderTags() {
+  const list = document.getElementById('tag-list');
+  list.innerHTML = '';
+  document.getElementById('cat-empty').style.display = cats.length === 0 ? 'block' : 'none';
+  cats.forEach((c, i) => {
+    const col = COLORS[i % COLORS.length];
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.style.cssText = `background:${col}18; color:${col}; border:1px solid ${col}55;`;
+    tag.innerHTML = `${c} <span class="x" onclick="removeCat(${i})">×</span>`;
+    list.appendChild(tag);
+  });
+  drawRoulette();
+}
+function addCat() {
+  const v = document.getElementById('cat-input').value.trim();
+  if (!v || cats.includes(v)) { document.getElementById('cat-input').value=''; return; }
+  cats.push(v);
+  document.getElementById('cat-input').value = '';
+  renderTags();
+}
+function removeCat(i) { cats.splice(i,1); renderTags(); }
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('cat-input').addEventListener('keydown', e => { if(e.key==='Enter') addCat(); });
+});
+
+// 룰렛 그리기
+function drawRoulette(hi=-1) {
+  const cv = document.getElementById('roulette');
+  const ctx = cv.getContext('2d');
+  const cx=120, cy=120, r=110;
+  ctx.clearRect(0,0,240,240);
+  if (!cats.length) {
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle='#eee'; ctx.fill();
+    ctx.fillStyle='#999'; ctx.font='13px sans-serif';
+    ctx.textAlign='center'; ctx.fillText('카테고리를 추가해주세요',cx,cy); return;
+  }
+  const slice = Math.PI*2/cats.length;
+  cats.forEach((c,i) => {
+    const s = angle + slice*i - Math.PI/2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,s,s+slice); ctx.closePath();
+    ctx.fillStyle = i===hi ? '#FFD700' : COLORS[i%COLORS.length]; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(s+slice/2);
+    ctx.textAlign='right';
+    ctx.fillStyle='#fff';
+    ctx.font = `bold ${cats.length>6?'11':'13'}px Apple SD Gothic Neo, sans-serif`;
+    ctx.fillText(c, r-10, 4);
+    ctx.restore();
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#ccc'; ctx.lineWidth=1.5; ctx.stroke();
+  // 화살표 포인터 (12시 방향)
+  ctx.beginPath();
+  ctx.moveTo(cx-10, cy-r-14); ctx.lineTo(cx, cy-r+5); ctx.lineTo(cx+10, cy-r-14);
+  ctx.closePath(); ctx.fillStyle='#E24B4A'; ctx.fill();
+}
+
+// 룰렛 스핀
+function spin() {
+  if (spinning || !cats.length) { if(!cats.length) alert('카테고리를 먼저 추가해주세요!'); return; }
+  spinning = true;
+  document.getElementById('spin-btn').disabled = true;
+  document.getElementById('result-text').textContent = '';
+  document.getElementById('rest-section').style.display = 'none';
+
+  const total = Math.PI*2*(5+Math.random()*5);
+  const dur = 3500, t0 = performance.now(), a0 = angle;
+  const ease = t => 1-Math.pow(1-t,3);
+
+  function frame(now) {
+    const p = Math.min((now-t0)/dur, 1);
+    angle = a0 + total*ease(p);
+    drawRoulette();
+    if (p < 1) { requestAnimationFrame(frame); return; }
+    spinning = false;
+    document.getElementById('spin-btn').disabled = false;
+    const slice = Math.PI*2/cats.length;
+    // 슬라이스 i 시작각 = angle + slice*i - π/2
+    // 12시(-π/2)가 슬라이스 i 안에 있으려면: angle + slice*i - π/2 <= -π/2 < angle + slice*(i+1) - π/2
+    // 즉 -angle 을 [0, 2π) 로 정규화한 뒤 slice로 나누면 됨
+    const norm = ((-angle) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+    const wi = Math.floor(norm / slice) % cats.length;
+    drawRoulette(wi);
+    document.getElementById('result-text').textContent = `🎉 오늘의 메뉴: ${cats[wi]}!`;
+    searchRestaurants(cats[wi]);
+  }
+  requestAnimationFrame(frame);
+}
+
+// 카카오 장소 검색
+function searchRestaurants(category) {
+  const sect = document.getElementById('rest-section');
+  const content = document.getElementById('rest-content');
+  document.getElementById('rest-label').textContent = `4. ${category} 근처 추천 식당`;
+  sect.style.display = 'block';
+  content.innerHTML = '<p class="loading">🔍 근처 식당 찾는 중...</p>';
+
+  const opts = {
+    location: new kakao.maps.LatLng(lat, lng),
+    radius: 1200,
+    sort: kakao.maps.services.SortBy.DISTANCE
+  };
+
+  ps.keywordSearch(category + ' 맛집', function(data, status) {
+    if (status !== kakao.maps.services.Status.OK || !data.length) {
+      content.innerHTML = '<p class="empty">근처에 해당 카테고리 식당을 찾지 못했어요. 반경을 넓혀볼까요?</p>';
+      return;
+    }
+    const items = data.slice(0,8);
+    const grid = document.createElement('div');
+    grid.className = 'rest-grid';
+    items.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'rest-card';
+      const dist = p.distance ? `${p.distance}m` : '';
+      card.innerHTML = `
+        <div class="rest-name">${p.place_name}</div>
+        <div class="rest-cat">${p.category_name.split(' > ').pop()}</div>
+        <div class="rest-addr" title="${p.road_address_name||p.address_name}">${p.road_address_name||p.address_name}</div>
+        ${dist ? `<span style="font-size:12px;color:#888;">📍 ${dist}</span>` : ''}
+        <br><a class="rest-link" href="${p.place_url}" target="_blank">카카오맵에서 보기 →</a>
+      `;
+      card.onclick = () => { map.setCenter(new kakao.maps.LatLng(p.y, p.x)); map.setLevel(3); };
+      grid.appendChild(card);
+    });
+    content.innerHTML = '';
+    content.appendChild(grid);
+    sect.scrollIntoView({behavior:'smooth'});
+  }, opts);
+}
+
+window.onload = function() {
+  renderTags();
+  kakao.maps.load(function() {
+    initMap();
+  });
+};
+</script>
+</body>
+</html>
